@@ -8,7 +8,7 @@ Clone the repository into your Neovim configuration directory:
 
 ```bash
 cd ~/.config
-git clone https://github.com/RyanBlaney/nvim-config.git nvim
+git clone git@github.com:RyanBlaney/deployable-neovim-config.git nvim
 ```
 
 ## Key Mappings
