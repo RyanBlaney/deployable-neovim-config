@@ -54,11 +54,11 @@ vim.api.nvim_create_autocmd('LspAttach', {
 
 require('mason').setup()
             require('mason-lspconfig').setup({
-                ensure_installed = { 'lua_ls', 'ts_ls', 'rust_analyzer', 'eslint' }
+                ensure_installed = { 'lua_ls', 'rust_analyzer', 'eslint', 'gopls' }
             })
 
 -- Ensure LSP servers are installed and set up
-local servers = { 'ts_ls', 'eslint', 'lua_ls', 'rust_analyzer', 'clangd' }
+local servers = { 'eslint', 'lua_ls', 'rust_analyzer', 'clangd', 'gopls' }
 for _, server in ipairs(servers) do
   lspconfig[server].setup({})
 end
