@@ -7,8 +7,7 @@ A simple, deployable configuration for Neovim, designed to be cloned directly in
 Clone the repository into your Neovim configuration directory:
 
 ```bash
-cd ~/.config
-git clone git@github.com:RyanBlaney/deployable-neovim-config.git nvim
+git clone https://github.com/RyanBlaney/deployable-neovim-config.git ~/.config/nvim
 ```
 
 ## Key Mappings
