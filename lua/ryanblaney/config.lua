@@ -34,3 +34,14 @@ vim.opt.relativenumber = true -- Enable relative line numbers on all other lines
 vim.opt.conceallevel = 1
 
 vim.g.mkdp_browser = "brave"
+
+-- Handle `-32802` errors from rust-analyzer gracefully
+for _, method in ipairs({ "textDocument/diagnostic", "workspace/diagnostic" }) do
+    local default_diagnostic_handler = vim.lsp.handlers[method]
+    vim.lsp.handlers[method] = function(err, result, context, config)
+        if err ~= nil and err.code == -32802 then
+            return -- Suppress the error
+        end
+        return default_diagnostic_handler(err, result, context, config)
+    end
+end
