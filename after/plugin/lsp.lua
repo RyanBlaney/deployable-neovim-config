@@ -1,22 +1,41 @@
-local lspconfig = require("lspconfig")
+-- LSP config in new style (Neovim 0.11+)
 local cmp = require("cmp")
-local lsp_defaults = lspconfig.util.default_config
 
--- Reserve a space in the gutter for diagnostics and signs
+-- Configure diagnostics & UI
 vim.opt.signcolumn = "yes"
+local signs = { Error = "⚠", Warn = "𝕨", Hint = "💡", Info = "" }
+for type, icon in pairs(signs) do
+    local hl = "DiagnosticSign" .. type
+    vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
+end
 
--- Add cmp_nvim_lsp capabilities settings to lspconfig
-lsp_defaults.capabilities =
-    vim.tbl_deep_extend("force", lsp_defaults.capabilities, require("cmp_nvim_lsp").default_capabilities())
+-- Floating window border
+local border = {
+    { "╔", "FloatBorder" },
+    { "═", "FloatBorder" },
+    { "╗", "FloatBorder" },
+    { "║", "FloatBorder" },
+    { "╝", "FloatBorder" },
+    { "═", "FloatBorder" },
+    { "╚", "FloatBorder" },
+    { "║", "FloatBorder" },
+}
 
--- Minimal nvim-cmp configuration
+local orig_util_open_floating_preview = vim.lsp.util.open_floating_preview
+vim.lsp.util.open_floating_preview = function(contents, syntax, opts, ...)
+    opts = opts or {}
+    opts.border = opts.border or border
+    return orig_util_open_floating_preview(contents, syntax, opts, ...)
+end
+
+-- Setup cmp
 cmp.setup({
     sources = {
         { name = "nvim_lsp" },
     },
     snippet = {
         expand = function(args)
-            vim.snippet.expand(args.body) -- Requires Neovim v0.10
+            vim.snippet.expand(args.body)
         end,
     },
     mapping = cmp.mapping.preset.insert({
@@ -27,28 +46,26 @@ cmp.setup({
     }),
 })
 
-local signs = { Error = "⚠", Warn = "𝕨", Hint = "💡", Info = "" }
-for type, icon in pairs(signs) do
-    local hl = "DiagnosticSign" .. type
-    vim.fn.sign_define(hl, { text = icon, texthl = hl, numhl = hl })
-end
+-- Global LSP settings
+local capabilities = require("cmp_nvim_lsp").default_capabilities()
 
--- Set up LSP keybindings only when an LSP server is active
+-- Keybindings for LSP attach
 vim.api.nvim_create_autocmd("LspAttach", {
     desc = "LSP actions",
     callback = function(event)
         local opts = { buffer = event.buf }
-
-        vim.keymap.set("n", "K", "<cmd>lua vim.lsp.buf.hover()<cr>", opts)
+        vim.keymap.set('n', 'K', function()
+            vim.lsp.buf.hover { border = "single", max_height = 25, max_width = 120 }
+        end, { desc = "Hover documentation" })
         vim.keymap.set("n", "gd", "<cmd>lua vim.lsp.buf.definition()<cr>", opts)
         vim.keymap.set("n", "gD", "<cmd>lua vim.lsp.buf.declaration()<cr>", opts)
         vim.keymap.set("n", "gi", "<cmd>lua vim.lsp.buf.implementation()<cr>", opts)
         vim.keymap.set("n", "go", "<cmd>lua vim.lsp.buf.type_definition()<cr>", opts)
         vim.keymap.set("n", "gr", "<cmd>lua vim.lsp.buf.references()<cr>", opts)
         vim.keymap.set("n", "gs", "<cmd>lua vim.lsp.buf.signature_help()<cr>", opts)
-        vim.keymap.set("n", "<leader>vrn>", "<cmd>lua vim.lsp.buf.rename()<cr>", opts)
-        vim.keymap.set("n", "<leader>vws>", "<cmd>lua vim.lsp.buf.workspace_symbol()<cr>", opts)
-        vim.keymap.set("n", "<leader>vd>", "<cmd>lua vim.diagnostic.open_float()<cr>", opts)
+        vim.keymap.set("n", "<leader>vrn", "<cmd>lua vim.lsp.buf.rename()<cr>", opts)
+        vim.keymap.set("n", "<leader>vws", "<cmd>lua vim.lsp.buf.workspace_symbol()<cr>", opts)
+        vim.keymap.set("n", "<leader>vd", "<cmd>lua vim.diagnostic.open_float()<cr>", opts)
         vim.keymap.set({ "n", "x" }, "<leader>vrf", "<cmd>lua vim.lsp.buf.format({async = true})<cr>", opts)
         vim.keymap.set("n", "<leader>vca", "<cmd>lua vim.lsp.buf.code_action()<cr>", opts)
         vim.keymap.set("i", "<C-h>", "<cmd>lua vim.lsp.buf.signature_help()<cr>", opts)
@@ -59,37 +76,106 @@ vim.api.nvim_create_autocmd("LspAttach", {
     end,
 })
 
+-- Setup Mason
 require("mason").setup()
 require("mason-lspconfig").setup({
-    ensure_installed = { "lua_ls", "eslint", "gopls", "tailwindcss", "ts_ls", "jdtls", "sqlls" },
+    ensure_installed = {
+        "lua_ls", "eslint", "gopls", "tailwindcss", "ts_ls", "jdtls", "sqlls", "clangd"
+    },
 })
 
--- Ensure LSP servers are installed and set up
-local servers = { "eslint", "lua_ls", "gopls", "ts_ls", "jdtls", "sqlls" }
-for _, server in ipairs(servers) do
-    lspconfig[server].setup({})
+-- Utility: Find root dir
+local function root_pattern(...)
+    local patterns = { ... }
+    return function(fname)
+        return vim.fs.dirname(vim.fs.find(patterns, { path = fname, upward = true })[1])
+    end
 end
 
-lspconfig.clangd.setup({
+-- Start LSP servers manually
+local function start_server(name, config)
+    vim.lsp.start(vim.tbl_deep_extend("force", {
+        name = name,
+        capabilities = capabilities,
+        on_attach = function(client, bufnr)
+            -- handle attach logic here if needed
+        end,
+    }, config))
+end
+
+-- Server-specific configs
+start_server("lua_ls", {
+    cmd = { "lua-language-server" },
+    filetypes = { "lua" },
+    root_dir = root_pattern(".git", ".luarc.json", "init.lua"),
+    settings = {
+        Lua = {
+            runtime = { version = "LuaJIT", path = vim.split(package.path, ";") },
+            diagnostics = { globals = { "vim" } },
+            workspace = { library = vim.api.nvim_get_runtime_file("", true) },
+        },
+    },
+})
+
+start_server("eslint", {
+    cmd = { "vscode-eslint-language-server", "--stdio" },
+    filetypes = { "javascript", "javascriptreact", "typescript", "typescriptreact" },
+    root_dir = root_pattern(".git", "package.json"),
+})
+
+start_server("gopls", {
+    cmd = { "gopls" },
+    filetypes = { "go", "gomod" },
+    root_dir = root_pattern("go.work", "go.mod", ".git"),
+})
+
+start_server("ts_ls", {
+    cmd = { "typescript-language-server", "--stdio" },
+    filetypes = { "typescript", "typescriptreact" },
+    root_dir = root_pattern("tsconfig.json", "package.json", ".git"),
+})
+
+start_server("jdtls", {
+    cmd = { "jdtls" },
+    filetypes = { "java" },
+    root_dir = root_pattern("pom.xml", "build.gradle", ".git"),
+})
+
+start_server("sqlls", {
+    cmd = { "sql-language-server" },
+    filetypes = { "sql" },
+    root_dir = root_pattern(".git"),
+})
+
+start_server("clangd", {
+    cmd = {
+        "clangd",
+        "--clang-tidy",
+        "--header-insertion=iwyu",
+        "--completion-style=detailed",
+        "--cxx=clang++",
+        "--std=c++17"
+    },
     filetypes = { "c", "cpp", "objc", "objcpp", "cuda" },
+    root_dir = root_pattern("compile_commands.json", "compile_flags.txt", ".git", "CMakeLists.txt"),
 })
 
-lspconfig.tailwindcss.setup({
+start_server("tailwindcss", {
+    cmd = { "tailwindcss-language-server", "--stdio" },
     filetypes = { "html", "javascript", "javascriptreact", "typescript", "typescriptreact" },
+    root_dir = root_pattern("tailwind.config.js", "tailwind.config.ts", "package.json", ".git"),
 })
 
-lspconfig.buf_ls.setup({
+start_server("buf_ls", {
     cmd = { "bufls", "serve" },
     filetypes = { "proto" },
-    root_dir = lspconfig.util.root_pattern("buf.yaml", ".git"), -- Ensure `buf.yaml` is in your project root
+    root_dir = root_pattern("buf.yaml", ".git"),
 })
 
-lspconfig.asm_lsp.setup({
+start_server("asm_lsp", {
     cmd = { "asm-lsp" },
     filetypes = { "asm", "arm" },
-    root_dir = function(fname)
-        return vim.fs.dirname(vim.fs.find(".git", { path = fname, upward = true })[1])
-    end,
+    root_dir = root_pattern(".git"),
     settings = {
         asm = {
             dialect = "arm",
@@ -98,52 +184,32 @@ lspconfig.asm_lsp.setup({
     },
 })
 
+start_server("racket_langserver", {
+    cmd = { "racket", "-l", "racket-langserver" },
+    filetypes = { "racket", "scheme" },
+    root_dir = root_pattern(".git", "info.rkt"),
+})
+
+-- Rust setup via rustaceanvim
 vim.g.rustaceanvim = {
     tools = {
         inlay_hints = {
-            -- automatically set inlay hints (type hints)
-            -- default: true
             auto = true,
-
-            -- Only show inlay hints for the current line
             only_current_line = false,
-
-            -- whether to show parameter hints with the inlay hints or not
-            -- default: true
             show_parameter_hints = true,
-
-            -- prefix for parameter hints
-            -- default: "<-"
             parameter_hints_prefix = "<- ",
-
-            -- prefix for all the other hints (type, chaining)
-            -- default: "=>"
             other_hints_prefix = "=> ",
-
-            -- whether to align to the length of the longest line in the file
-            max_len_align = false,
-
-            -- padding from the left if max_len_align is true
-            max_len_align_padding = 1,
-
-            -- whether to align to the extreme right or not
-            right_align = false,
-
-            -- padding from the right if right_align is true
-            right_align_padding = 7,
-
-            -- The color of the hints
             highlight = "Comment",
         },
     },
     server = {
-        on_attach = lsp_defaults.on_attach,
-        capabilities = lsp_defaults.capabilities,
+        on_attach = function(client, bufnr)
+            -- reuse general keybindings
+        end,
+        capabilities = capabilities,
         settings = {
             ["rust-analyzer"] = {
-                cargo = {
-                    allFeatures = true,
-                },
+                cargo = { allFeatures = true },
             },
         },
     },

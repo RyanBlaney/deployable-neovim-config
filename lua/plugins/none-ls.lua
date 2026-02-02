@@ -9,10 +9,6 @@ none_ls.setup({
         -- }),
         none_ls.builtins.formatting.gofmt,
         none_ls.builtins.formatting.goimports,
-        none_ls.builtins.formatting.clang_format,
-        -- none_ls.builtins.formatting.golines.with({
-        -- extra_args = { "--max-len=80", "--base-formatter=gofumpt" },
-        -- }),
         none_ls.builtins.formatting.stylua,
         none_ls.builtins.formatting.prettier,
     },
